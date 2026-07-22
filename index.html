@@ -13,6 +13,26 @@
       display: flex; flex-direction: column; align-items: center;
     }
     h1 { font-size: 20px; margin-bottom: 10px; }
+
+    /* --- login screen --- */
+    .login-screen {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      width: 100%; max-width: 360px; margin-top: 15vh;
+    }
+    .login-screen .sub { font-size: 13px; color: #94a3b8; margin-bottom: 16px; text-align: center; }
+    .login-screen input {
+      width: 100%; padding: 14px; font-size: 16px; border-radius: 8px; border: none;
+      margin-bottom: 12px; background: #1e293b; color: #22d3ee; text-align: center; letter-spacing: 2px;
+    }
+    .login-screen button {
+      width: 100%; padding: 14px; font-size: 15px; border-radius: 8px; border: none;
+      background: #22d3ee; color: #0f172a; font-weight: bold; cursor: pointer;
+    }
+    .login-screen button:disabled { opacity: 0.6; cursor: default; }
+    .login-error { color: #f87171; font-size: 13px; margin-top: 10px; min-height: 16px; text-align: center; }
+
+    /* --- main app --- */
+    .app-content { display: none; width: 100%; flex-direction: column; align-items: center; }
     select {
       width: 100%; max-width: 500px; padding: 12px; font-size: 15px;
       border-radius: 8px; border: none; margin-bottom: 14px; background: #1e293b; color: #22d3ee;
@@ -42,39 +62,58 @@
       background: #1e293b; padding: 8px 12px; border-radius: 8px;
       margin: 4px 0; display: flex; justify-content: space-between; font-size: 13px;
     }
+    .logout-link {
+      font-size: 12px; color: #64748b; margin-top: 16px; text-decoration: underline; cursor: pointer;
+    }
   </style>
 </head>
 <body>
 
   <h1>Meal Scanner</h1>
 
-  <select id="stationSelect">
-    <option value="">Loading meal slots...</option>
-  </select>
-
-  <div id="reader"></div>
-
-  <div class="result-box" id="resultBox" style="display:none">
-    <div style="font-size:12px; color:#94a3b8">Last Scanned:</div>
-    <div class="name" id="guestName">--</div>
-    <div class="role" id="guestRole"></div>
-    <div class="status" id="statusText"></div>
-    <div class="progress" id="progressText"></div>
+  <!-- LOGIN SCREEN -->
+  <div class="login-screen" id="loginScreen">
+    <div class="sub">Enter the access code to open the scanner</div>
+    <input type="password" id="authCodeInput" placeholder="Access code" autocomplete="off" inputmode="text" />
+    <button id="loginBtn">Unlock Scanner</button>
+    <div class="login-error" id="loginError"></div>
   </div>
 
-  <div class="history" id="historySection" style="display:none">
-    <h3>Scan history (this session)</h3>
-    <div id="historyList"></div>
+  <!-- MAIN APP (hidden until authenticated) -->
+  <div class="app-content" id="appContent">
+
+    <select id="stationSelect">
+      <option value="">Loading meal slots...</option>
+    </select>
+
+    <div id="reader"></div>
+
+    <div class="result-box" id="resultBox" style="display:none">
+      <div style="font-size:12px; color:#94a3b8">Last Scanned:</div>
+      <div class="name" id="guestName">--</div>
+      <div class="role" id="guestRole"></div>
+      <div class="status" id="statusText"></div>
+      <div class="progress" id="progressText"></div>
+    </div>
+
+    <div class="history" id="historySection" style="display:none">
+      <h3>Scan history (this session)</h3>
+      <div id="historyList"></div>
+    </div>
+
+    <div class="logout-link" id="logoutLink">Lock scanner</div>
   </div>
 
   <script>
     // IMPORTANT: paste your Apps Script Web App /exec URL here after deploying Code.gs
-    const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxxux_5fYFFeiDw4LNVy-07LPa_sGA_hGHZHisSqZOwQpPUAVYAfDQ-soM2Lq_u2KdolQ/exec';
+    const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwwKMthGEcVWK1XsKwcpqkK-n8cah3gqPgodPy13Gqp6JUF00oOMzve9sD6a5LmVEI/exec';
     const STATION_NOTE = ''; // optional: label this device, e.g. 'Gate A'
 
     const scanHistory = [];
     let lastScan = '';
     let lastScanTime = 0;
+    let scanner = null;
+    let appStarted = false; // in-memory only: reloading the page requires re-entering the code
 
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     function beep(freq) {
@@ -88,7 +127,73 @@
       osc.stop(audioCtx.currentTime + 0.15);
     }
 
-    // --- meal slot selector ---
+    //=========================
+    // LOGIN
+    //=========================
+    const loginScreen = document.getElementById('loginScreen');
+    const appContent = document.getElementById('appContent');
+    const authCodeInput = document.getElementById('authCodeInput');
+    const loginBtn = document.getElementById('loginBtn');
+    const loginError = document.getElementById('loginError');
+
+    async function attemptLogin() {
+      const code = authCodeInput.value.trim();
+      if (!code) {
+        loginError.textContent = 'Enter a code first.';
+        return;
+      }
+      loginBtn.disabled = true;
+      loginBtn.textContent = 'Checking...';
+      loginError.textContent = '';
+
+      try {
+        const res = await fetch(APPS_SCRIPT_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'login', code })
+        });
+        const data = await res.json();
+
+        if (data.status === 'success') {
+          loginScreen.style.display = 'none';
+          appContent.style.display = 'flex';
+          authCodeInput.value = '';
+          startApp();
+        } else {
+          loginError.textContent = data.message || 'Incorrect code.';
+        }
+      } catch (err) {
+        loginError.textContent = 'Network error: ' + err.message;
+      } finally {
+        loginBtn.disabled = false;
+        loginBtn.textContent = 'Unlock Scanner';
+      }
+    }
+
+    loginBtn.addEventListener('click', attemptLogin);
+    authCodeInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') attemptLogin();
+    });
+
+    document.getElementById('logoutLink').addEventListener('click', () => {
+      appContent.style.display = 'none';
+      loginScreen.style.display = 'flex';
+      if (scanner) {
+        scanner.stop().catch(() => {});
+      }
+      appStarted = false;
+    });
+
+    //=========================
+    // MAIN APP (only runs after successful login)
+    //=========================
+    function startApp() {
+      if (appStarted) return;
+      appStarted = true;
+      loadSlots();
+      startScanner();
+    }
+
     function loadSlots() {
       const sel = document.getElementById('stationSelect');
       fetch(APPS_SCRIPT_URL + '?action=slots')
@@ -96,19 +201,12 @@
         .then(data => {
           if (data.status !== 'ok') throw new Error('bad response');
           sel.innerHTML = data.slots.map(s => '<option value="' + s.key + '">' + s.label + '</option>').join('');
-          const saved = localStorage.getItem('mealSlot');
-          if (saved && data.slots.some(s => s.key === saved)) sel.value = saved;
         })
         .catch(() => {
           sel.innerHTML = '<option value="">Could not load meal slots — check APPS_SCRIPT_URL</option>';
         });
     }
-    document.addEventListener('DOMContentLoaded', loadSlots);
-    document.getElementById('stationSelect').addEventListener('change', e => {
-      localStorage.setItem('mealSlot', e.target.value);
-    });
 
-    // send scan to Apps Script and read the REAL result (no more no-cors guessing)
     async function sendScan(guestId) {
       const mealSlot = document.getElementById('stationSelect').value;
       const el = document.getElementById('statusText');
@@ -187,17 +285,19 @@
       ).join('');
     }
 
-    const scanner = new Html5Qrcode('reader');
-    scanner.start(
-      { facingMode: 'environment' },
-      { fps: 10, qrbox: { width: 260, height: 260 }, aspectRatio: 1.0 },
-      onScanSuccess
-    ).catch(err => {
-      document.getElementById('resultBox').style.display = 'block';
-      document.getElementById('guestName').textContent = 'Camera Error';
-      document.getElementById('statusText').textContent = err;
-      document.getElementById('statusText').className = 'status error';
-    });
+    function startScanner() {
+      scanner = new Html5Qrcode('reader');
+      scanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 260, height: 260 }, aspectRatio: 1.0 },
+        onScanSuccess
+      ).catch(err => {
+        document.getElementById('resultBox').style.display = 'block';
+        document.getElementById('guestName').textContent = 'Camera Error';
+        document.getElementById('statusText').textContent = err;
+        document.getElementById('statusText').className = 'status error';
+      });
+    }
   </script>
 </body>
 </html>
