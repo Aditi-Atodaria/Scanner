@@ -14,7 +14,6 @@
     }
     h1 { font-size: 20px; margin-bottom: 10px; }
 
-    /* --- login screen --- */
     .login-screen {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       width: 100%; max-width: 360px; margin-top: 15vh;
@@ -31,7 +30,6 @@
     .login-screen button:disabled { opacity: 0.6; cursor: default; }
     .login-error { color: #f87171; font-size: 13px; margin-top: 10px; min-height: 16px; text-align: center; }
 
-    /* --- main app --- */
     .app-content { display: none; width: 100%; flex-direction: column; align-items: center; }
     select {
       width: 100%; max-width: 500px; padding: 12px; font-size: 15px;
@@ -46,10 +44,6 @@
     .result-box.invalid { border-color: #f87171; }
     .result-box .name { font-size: 22px; font-weight: bold; margin: 6px 0; }
     .result-box .role { font-size: 13px; color: #94a3b8; }
-    .meal-tag {
-      display: inline-block; font-size: 12px; padding: 3px 10px;
-      border-radius: 999px; margin-top: 8px; font-weight: bold; background: #22d3ee33; color: #22d3ee;
-    }
     .status { font-size: 14px; margin: 8px 0 0; }
     .status.success { color: #4ade80; }
     .status.error { color: #f87171; }
@@ -71,7 +65,6 @@
 
   <h1>Meal Scanner</h1>
 
-  <!-- LOGIN SCREEN -->
   <div class="login-screen" id="loginScreen">
     <div class="sub">Enter the access code to open the scanner</div>
     <input type="password" id="authCodeInput" placeholder="Access code" autocomplete="off" inputmode="text" />
@@ -79,7 +72,6 @@
     <div class="login-error" id="loginError"></div>
   </div>
 
-  <!-- MAIN APP (hidden until authenticated) -->
   <div class="app-content" id="appContent">
 
     <select id="stationSelect">
@@ -105,15 +97,14 @@
   </div>
 
   <script>
-    // IMPORTANT: paste your Apps Script Web App /exec URL here after deploying Code.gs
     const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbxxux_5fYFFeiDw4LNVy-07LPa_sGA_hGHZHisSqZOwQpPUAVYAfDQ-soM2Lq_u2KdolQ/exec';
-    const STATION_NOTE = ''; // optional: label this device, e.g. 'Gate A'
+    const STATION_NOTE = '';
 
     const scanHistory = [];
     let lastScan = '';
     let lastScanTime = 0;
     let scanner = null;
-    let appStarted = false; // in-memory only: reloading the page requires re-entering the code
+    let appStarted = false;
 
     const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     function beep(freq) {
@@ -127,9 +118,6 @@
       osc.stop(audioCtx.currentTime + 0.15);
     }
 
-    //=========================
-    // LOGIN
-    //=========================
     const loginScreen = document.getElementById('loginScreen');
     const appContent = document.getElementById('appContent');
     const authCodeInput = document.getElementById('authCodeInput');
@@ -184,9 +172,6 @@
       appStarted = false;
     });
 
-    //=========================
-    // MAIN APP (only runs after successful login)
-    //=========================
     function startApp() {
       if (appStarted) return;
       appStarted = true;
@@ -222,7 +207,6 @@
       }
 
       try {
-        // text/plain avoids a CORS preflight; Apps Script still parses it as JSON
         const res = await fetch(APPS_SCRIPT_URL, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
@@ -268,7 +252,7 @@
 
     function onScanSuccess(decoded) {
       const now = Date.now();
-      if (decoded === lastScan && now - lastScanTime < 3000) return; // debounce
+      if (decoded === lastScan && now - lastScanTime < 3000) return;
       lastScan = decoded;
       lastScanTime = now;
 
